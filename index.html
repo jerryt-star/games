@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小小生物學家 - 顯微鏡探索遊戲</title>
+    <!-- 引入 React 與 ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- 引入 Babel 用於解析 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自定義滑桿樣式 */
+        input[type='range'] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type='range']::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+        }
+        input[type='range']::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: currentColor;
+            cursor: pointer;
+            margin-top: -8px;
+            border: 2px solid #0f172a;
+        }
+        /* 避免長按選取 */
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 m-0 p-0 overflow-hidden touch-none">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // 核心圖示元件
+        const Icons = {
+            Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+            Target: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+            Award: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526"/><circle cx="12" cy="8" r="6"/></svg>,
+            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
+            Loader: () => <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>,
+            XCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+        };
+
+        // 更新後的樣本資料庫 - 使用更精確的微距/顯微視角圖片
+        const SPECIMENS = [
+            { id: 1, name: '蜜蜂的身體', image: 'https://images.unsplash.com/photo-1506755855567-92ff770e8d30?q=80&w=1000&auto=format', fact: '蜜蜂全身長滿了細細的毛，可以幫助它們黏住花粉並帶回蜂巢！', targetFocus: 50, color: '#eab308' },
+            { id: 2, name: '植物的組織結構', image: 'https://images.unsplash.com/photo-1516281730419-ce014ba303fc?q=80&w=1000&auto=format', fact: '從特寫看，植物葉片表面充滿了精密的紋路，負責光合作用。', targetFocus: 35, color: '#15803d' },
+            { id: 3, name: '蝴蝶翅膀的鱗片', image: 'https://images.unsplash.com/photo-1456345070216-36873528f8f2?q=80&w=1000&auto=format', fact: '蝴蝶翅膀上蓋滿了像瓦片一樣的微小鱗片，讓它們擁有繽紛色彩。', targetFocus: 75, color: '#9333ea' },
+            { id: 4, name: '昆蟲的口器', image: 'https://images.unsplash.com/photo-1560114928-40f1f1eb26a0?q=80&w=1000&auto=format', fact: '昆蟲的複眼和口器非常精密，讓它們能適應各種惡劣環境。', targetFocus: 40, color: '#475569' },
+            { id: 5, name: '海星的皮膚紋路', image: 'https://images.unsplash.com/photo-1466928046870-156ca693897b?q=80&w=1000&auto=format', fact: '海星的表皮佈滿了微小的管足和棘皮，幫助它們緩慢移動。', targetFocus: 65, color: '#f97316' },
+            { id: 6, name: '紡織纖維', image: 'https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=1000&auto=format', fact: '衣服的布料是由無數細小的纖維交織而成的，看起来像粗繩。', targetFocus: 25, color: '#44403c' },
+            { id: 7, name: '螞蟻的頭部', image: 'https://images.unsplash.com/photo-1590059530495-207a972c3cc8?q=80&w=1000&auto=format', fact: '螞蟻有用來感知環境的長觸角，以及強而有力的大顎。', targetFocus: 85, color: '#7f1d1d' },
+            { id: 8, name: '花粉與花蕊', image: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?q=80&w=1000&auto=format', fact: '花粉在顯微鏡下有各種奇特的形狀，像小刺球或橄欖球。', targetFocus: 45, color: '#facc15' },
+            { id: 9, name: '微觀水樣本', image: 'https://images.unsplash.com/photo-1579154204601-01588f351e67?q=80&w=1000&auto=format', fact: '一滴水中可能包含數以千計的微生物，這是肉眼看不見的世界。', targetFocus: 30, color: '#2563eb' },
+            { id: 10, name: '真菌的結構', image: 'https://images.unsplash.com/photo-1544333323-5092144936ca?q=80&w=1000&auto=format', fact: '真菌或黴菌是由細長的菌絲組成的，是自然界重要的分解者。', targetFocus: 70, color: '#0d9488' }
+        ];
+
+        function App() {
+            const [gameState, setGameState] = useState('start');
+            const [questions, setQuestions] = useState([]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [score, setScore] = useState(0);
+            const [focus, setFocus] = useState(20);
+            const [zoomLevel, setZoomLevel] = useState(25);
+            const [position, setPosition] = useState({ x: 0, y: 0 });
+            const [isInteracting, setIsInteracting] = useState(false);
+            const [imgLoading, setImgLoading] = useState(true);
+            const [showFeedback, setShowFeedback] = useState(null);
+            const lastTouchRef = useRef({ x: 0, y: 0 });
+
+            const currentSpecimen = questions[currentIndex];
+            const actualScale = useMemo(() => 1.0 + (zoomLevel / 100) * 3.5, [zoomLevel]);
+
+            const currentOptions = useMemo(() => {
+                if (!currentSpecimen) return [];
+                const others = SPECIMENS
+                    .filter(s => s.name !== currentSpecimen.name)
+                    .sort(() => 0.5 - Math.random())
+                    .slice(0, 2)
+                    .map(s => s.name);
+                return [currentSpecimen.name, ...others].sort();
+            }, [currentSpecimen]);
+
+            useEffect(() => {
+                if (gameState === 'playing' && currentSpecimen) {
+                    setImgLoading(true);
+                    const timer = setTimeout(() => setImgLoading(false), 1200);
+                    return () => clearTimeout(timer);
+                }
+            }, [currentIndex, gameState, currentSpecimen]);
+
+            const startGame = () => {
+                const shuffled = [...SPECIMENS].sort(() => 0.5 - Math.random());
+                setQuestions(shuffled.slice(0, 10));
+                setCurrentIndex(0);
+                setScore(0);
+                resetView();
+                setGameState('playing');
+            };
+
+            const resetView = () => {
+                setFocus(20);
+                setZoomLevel(20);
+                setPosition({ x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 });
+                setShowFeedback(null);
+                setIsInteracting(false);
+            };
+
+            const isAligned = useMemo(() => {
+                if (!currentSpecimen || imgLoading) return false;
+                const focusDiff = Math.abs(focus - currentSpecimen.targetFocus);
+                const posDiff = Math.sqrt(position.x ** 2 + position.y ** 2);
+                // 判定標準：對焦誤差 < 18 且 偏移量 < 250
+                return focusDiff < 18 && posDiff < 250 && zoomLevel > 25;
+            }, [focus, position, zoomLevel, currentSpecimen, imgLoading]);
+
+            const handleNext = (correct) => {
+                if (correct) { 
+                    setScore(s => s + 10); 
+                    setShowFeedback('correct'); 
+                } else { 
+                    setShowFeedback('wrong'); 
+                }
+                setTimeout(() => {
+                    if (currentIndex < 9) { 
+                        setCurrentIndex(i => i + 1); 
+                        resetView(); 
+                    } else { 
+                        setGameState('result'); 
+                    }
+                }, 2000);
+            };
+
+            const handleStart = (e) => {
+                if (showFeedback) return;
+                setIsInteracting(true);
+                const x = e.touches ? e.touches[0].clientX : e.clientX;
+                const y = e.touches ? e.touches[0].clientY : e.clientY;
+                lastTouchRef.current = { x, y };
+            };
+
+            const handleMove = (e) => {
+                if (!isInteracting || showFeedback) return;
+                const x = e.touches ? e.touches[0].clientX : e.clientX;
+                const y = e.touches ? e.touches[0].clientY : e.clientY;
+                const dx = x - lastTouchRef.current.x;
+                const dy = y - lastTouchRef.current.y;
+                // 移動靈敏度隨縮放倍率調整
+                setPosition(prev => ({ 
+                    x: prev.x + dx / actualScale, 
+                    y: prev.y + dy / actualScale 
+                }));
+                lastTouchRef.current = { x, y };
+            };
+
+            if (gameState === 'start') {
+                return (
+                    <div className="min-h-screen w-full bg-sky-50 flex items-center justify-center p-4">
+                        <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl text-center max-w-lg w-full border-[8px] border-sky-300">
+                            <div className="text-sky-500 flex justify-center mb-6"><Icons.Search /></div>
+                            <h1 className="text-4xl md:text-5xl font-black text-sky-900 mb-6 tracking-tight">小小生物學家</h1>
+                            <p className="text-lg md:text-xl text-sky-700 mb-8 font-bold text-center leading-relaxed">
+                                準備好探索微觀世界了嗎？<br/>調整旋鈕，找出隱藏的生物！
+                            </p>
+                            <button onClick={startGame} className="w-full bg-sky-500 hover:bg-sky-600 text-white text-2xl font-black py-5 rounded-full shadow-[0_8px_0_rgb(3,105,161)] active:translate-y-1 active:shadow-none transition-all">
+                                開始探險！
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (gameState === 'result') {
+                return (
+                    <div className="min-h-screen w-full bg-indigo-50 flex items-center justify-center p-4 text-center">
+                        <div className="bg-white p-10 md:p-12 rounded-[2.5rem] shadow-2xl border-[8px] border-indigo-300 max-w-md w-full">
+                            <div className={`flex justify-center mb-6 ${score >= 80 ? 'text-yellow-400' : 'text-slate-300'}`}><Icons.Award /></div>
+                            <h2 className="text-3xl font-black text-indigo-900 mb-4 text-center font-sans">探險任務完成</h2>
+                            <p className="text-xl text-indigo-700 mb-8 font-bold text-center font-sans">總得分：<span className="text-6xl font-black text-indigo-600 ml-2">{score}</span></p>
+                            <button onClick={startGame} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white text-xl font-black py-5 rounded-full shadow-[0_8px_0_rgb(67,56,202)] active:translate-y-1 transition-all">再次挑戰</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen w-full bg-slate-900 text-white flex flex-col lg:flex-row overflow-hidden font-sans">
+                    <div className="flex-1 flex flex-col items-center justify-center p-4 relative min-h-[400px]">
+                        <div className="absolute top-4 left-4 right-4 flex justify-between z-20 pointer-events-none">
+                            <div className="bg-black/60 px-4 py-2 rounded-full border border-sky-400 text-sm font-bold shadow-lg">標本: {currentIndex + 1} / 10</div>
+                            <div className="bg-black/60 px-4 py-2 rounded-full border border-yellow-400 text-sm font-bold text-yellow-400 shadow-lg font-mono">SCORE: {score}</div>
+                        </div>
+
+                        <div className="relative w-64 h-64 sm:w-80 sm:h-80 md:w-[450px] md:h-[450px] lg:w-[500px] lg:h-[500px] flex-shrink-0">
+                            <div 
+                                className="absolute inset-0 rounded-full bg-black border-[10px] md:border-[16px] border-slate-800 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden cursor-move flex items-center justify-center"
+                                onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={() => setIsInteracting(false)} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={() => setIsInteracting(false)}
+                            >
+                                {imgLoading && <div className="z-20 text-sky-400 flex flex-col items-center"><Icons.Loader /><p className="font-bold text-sky-200 mt-2">載入樣本中...</p></div>}
+                                {currentSpecimen && (
+                                    <img 
+                                        src={currentSpecimen.image} 
+                                        className="w-[180%] h-auto max-w-none transition-all duration-300 pointer-events-none" 
+                                        style={{ 
+                                            transform: `translate(${position.x}px, ${position.y}px) scale(${actualScale})`, 
+                                            filter: `blur(${Math.min(Math.abs(focus - currentSpecimen.targetFocus) / 4, 15)}px)`, 
+                                            opacity: imgLoading ? 0 : 1 
+                                        }} 
+                                    />
+                                )}
+                                {showFeedback && (
+                                    <div className={`absolute inset-0 z-30 flex items-center justify-center ${showFeedback === 'correct' ? 'bg-green-500/50' : 'bg-red-500/50'}`}>
+                                        {showFeedback === 'correct' ? <div className="text-white scale-[4]"><Icons.Check /></div> : <div className="text-white scale-[4]"><Icons.XCircle /></div>}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="absolute inset-0 rounded-full pointer-events-none border-2 border-white/10 shadow-inner"></div>
+                        </div>
+
+                        <div className="mt-8 w-full max-w-md space-y-4 px-2">
+                            <div className="bg-slate-800/80 p-5 rounded-2xl border border-white/10 text-yellow-400 shadow-xl">
+                                <div className="flex justify-between mb-2 font-bold text-xs uppercase tracking-wider"><span>放大倍率</span><span>{Math.round(actualScale * 10)}X</span></div>
+                                <input type="range" min="0" max="100" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))} className="w-full text-yellow-400" />
+                            </div>
+                            <div className="bg-slate-800/80 p-5 rounded-2xl border border-white/10 text-sky-400 shadow-xl">
+                                <div className="flex justify-between mb-2 font-bold text-xs uppercase tracking-wider"><span>調節對焦</span><span>焦距: {focus}</span></div>
+                                <input type="range" min="0" max="100" value={focus} onChange={(e) => setFocus(Number(e.target.value))} className="w-full text-sky-400" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="w-full lg:w-96 bg-slate-800 p-6 md:p-8 flex flex-col border-t-4 lg:border-t-0 lg:border-l-4 border-black/20 overflow-y-auto">
+                        <h2 className="text-2xl font-black text-sky-400 mb-6 flex items-center gap-3"><Icons.Target /> 觀察任務板</h2>
+                        <div className="bg-slate-700/50 p-6 rounded-3xl grow flex flex-col shadow-inner border border-white/5 min-h-[250px]">
+                            <p className="text-xl font-bold mb-6 text-slate-100 leading-relaxed text-center lg:text-left">
+                                {isAligned ? '✨ 鎖定目標！這是什麼？' : '調整縮放與對焦直到畫面清晰，並將標本移至鏡頭中央...'}
+                            </p>
+                            {isAligned ? (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                                    {currentOptions.map((opt, i) => (
+                                        <button 
+                                            key={i} 
+                                            onClick={() => handleNext(opt === currentSpecimen.name)} 
+                                            className="w-full text-left bg-slate-600 hover:bg-sky-500 p-4 rounded-2xl font-black text-lg transition-all border-b-4 border-black/40 active:translate-y-1 active:border-b-0"
+                                        >
+                                            {opt}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-center gap-6">
+                                    <div className="opacity-20 scale-[2]"><Icons.Search /></div>
+                                    <p className="text-sm font-bold italic leading-relaxed">
+                                        小撇步：<br/>
+                                        1. 拖動畫面尋找標本。<br/>
+                                        2. 使用下方拉桿調整清晰度。
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                        {showFeedback === 'correct' && (
+                            <div className="mt-6 p-5 bg-sky-900/40 rounded-2xl border border-sky-400/30 animate-in zoom-in">
+                                <h4 className="text-sky-300 font-bold mb-1 flex items-center gap-2 text-sm"><Icons.Award /> 生物百科</h4>
+                                <p className="text-sm italic text-sky-100 leading-relaxed">「{currentSpecimen.fact}」</p>
+                            </div>
+                        )}
+                        <button onClick={resetView} className="mt-8 text-slate-500 hover:text-slate-300 text-xs flex items-center justify-center gap-2 font-black uppercase tracking-widest transition-colors"><Icons.Refresh /> 重置標本位置</button>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
